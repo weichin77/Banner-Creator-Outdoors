@@ -1,0 +1,11 @@
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow users to read their own data, but only the backend can write credits
+    match /users/{email} {
+      allow read: if true; // In production, change to: request.auth.token.email == email
+      allow write: if false; // Only backend (Cloud Function) can write
+    }
+  }
+}
