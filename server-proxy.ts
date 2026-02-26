@@ -195,138 +195,72 @@ export const handleGetUser = async (req: any, res: any) => {
 };
 
 // --- ENDPOINT: Generate Background ---
-export const handleGeneratePrompt = async (req: any, res: any) => {
+export const handleDeductCredit = async (req: any, res: any) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
-  const { theme, email } = req.body;
+  const { email } = req.body;
+  const amount = 1; // Hardcoded to prevent client manipulation
 
-  if (!theme || !email) {
-    return res.status(400).json({ message: 'Theme and Email are required' });
+  if (!email) {
+    return res.status(400).json({ message: 'Email is required' });
   }
 
   const userRef = db.collection('users').doc(email);
 
   try {
-    // 1. Transaction: Deduct Credit
+    let newCredits = 0;
     await db.runTransaction(async (t: any) => {
       const doc = await t.get(userRef);
       if (!doc.exists) {
         throw new Error("User not found");
       }
       const data = doc.data();
-      if (!data || data.credits < 1) {
+      if (!data || data.credits < amount) {
         throw new Error("Insufficient credits");
       }
-      t.update(userRef, { credits: data.credits - 1 });
+      newCredits = data.credits - amount;
+      t.update(userRef, { credits: newCredits });
     });
 
-    // 2. Initialize AI
-    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (!apiKey) {
-        throw new Error("API Key not found");
-    }
-    const ai = new GoogleGenAI({ apiKey });
-
-    const promptInstruction = `You are an expert AI image prompt engineer. Generate a highly detailed, hyper-realistic image generation prompt for an outdoor clothing brand banner. 
-The theme is: ${theme}.
-CRITICAL REQUIREMENT: The prompt MUST specify that the main subject (a person wearing outdoor gear) is positioned on the extreme RIGHT third of the frame, leaving the left two-thirds completely empty/clear for text placement.
-The prompt should describe the lighting, atmosphere, and camera style (high-end retail photography).
-Do not include any conversational text, just the prompt itself.`;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: promptInstruction,
-    });
-
-    const doc = await userRef.get();
-    res.status(200).json({ prompt: response.text, credits: doc.data().credits });
+    res.status(200).json({ credits: newCredits });
   } catch (error: any) {
-    console.error("Generate Prompt Error:", error);
-    res.status(500).json({ message: error.message || 'Internal Server Error' });
+    console.error("Deduct Credit Error:", error);
+    const statusCode = error.message === "Insufficient credits" ? 403 : 500;
+    res.status(statusCode).json({ message: error.message || 'Internal Server Error' });
   }
 };
 
-export const handleGenerateBackground = async (req: any, res: any) => {
+export const handleRefundCredit = async (req: any, res: any) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
-  const { prompt, email } = req.body;
+  const { email } = req.body;
+  const amount = 1; // Hardcoded to prevent client manipulation
 
-  if (!prompt || !email) {
-    return res.status(400).json({ message: 'Prompt and Email are required' });
+  if (!email) {
+    return res.status(400).json({ message: 'Email is required' });
   }
 
   const userRef = db.collection('users').doc(email);
 
   try {
-    // 1. Transaction: Deduct Credit
-    // We deduct BEFORE generation to prevent abuse. We refund if generation fails.
+    let newCredits = 0;
     await db.runTransaction(async (t: any) => {
       const doc = await t.get(userRef);
       if (!doc.exists) {
         throw new Error("User not found");
       }
       const data = doc.data();
-      if (!data || data.credits < 1) {
-        throw new Error("Insufficient credits");
-      }
-      t.update(userRef, { credits: data.credits - 1 });
+      newCredits = data.credits + amount;
+      t.update(userRef, { credits: newCredits });
     });
 
-    // 2. Initialize AI
-    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (!apiKey) {
-        throw new Error("API Key not found");
-    }
-    const ai = new GoogleGenAI({ apiKey });
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: { parts: [{ text: prompt }] },
-      config: { imageConfig: { aspectRatio: "16:9" } }
-    });
-
-    // 3. Extract Image
-    let imageUrl = null;
-    if (response.candidates && response.candidates[0] && response.candidates[0].content && response.candidates[0].content.parts) {
-        for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData) {
-                imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                break;
-            }
-        }
-    }
-
-    if (!imageUrl) {
-      throw new Error("AI returned no image");
-    }
-
-    // 4. Get final credit balance to update UI
-    const finalUserDoc = await userRef.get();
-    const currentCredits = finalUserDoc.data()?.credits || 0;
-
-    return res.status(200).json({ imageUrl, credits: currentCredits });
-
+    res.status(200).json({ credits: newCredits });
   } catch (error: any) {
-    console.error("Backend Generation Error:", error);
-
-    // Refund credit if the error was strictly AI generation failure (not insufficient funds)
-    if (error.message === "AI returned no image" || error.message.includes("GoogleGenAI")) {
-       // Mock DB update for refund
-       try {
-         const doc = await userRef.get();
-         if (doc.exists) {
-             await userRef.update({ credits: (doc.data().credits || 0) + 1 });
-         }
-       } catch (e) { console.error("Refund failed", e); }
-    }
-
-    const statusCode = error.message === "Insufficient credits" ? 403 : 500;
-    return res.status(statusCode).json({ 
-      message: error.message || 'Internal Server Error' 
-    });
+    console.error("Refund Credit Error:", error);
+    res.status(500).json({ message: error.message || 'Internal Server Error' });
   }
 };

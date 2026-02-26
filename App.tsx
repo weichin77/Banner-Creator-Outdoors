@@ -188,28 +188,6 @@ const App: React.FC = () => {
                 {isUserLoaded ? user.credits : '...'}
               </span>
             </div>
-            
-            <button 
-              onClick={handleGenerateBackground}
-              disabled={loading || !isUserLoaded}
-              className={`group flex items-center space-x-2 px-4 sm:px-6 py-2.5 rounded-full font-bold transition-all border border-white/20 ${
-                loading || !isUserLoaded
-                ? 'bg-white/5 text-white/30 cursor-not-allowed opacity-50' 
-                : 'bg-white/10 text-white hover:bg-orange-600 hover:border-orange-500 shadow-xl active:scale-95'
-              }`}
-            >
-              {loading ? (
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-              ) : (
-                <svg className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              )}
-              <span className="text-sm sm:text-base whitespace-nowrap">{loading ? t('generatingBtn') : t('generateBtn')}</span>
-            </button>
           </div>
         </div>
       </header>
@@ -221,6 +199,26 @@ const App: React.FC = () => {
             <div className="absolute top-4 left-4 pointer-events-none opacity-0 group-hover/banner:opacity-100 transition-opacity bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 text-[10px] font-bold uppercase tracking-widest text-orange-400">
               {t('dragHint')}
             </div>
+          </div>
+          <div className="flex justify-end mt-4">
+            <button 
+              onClick={handleExport}
+              disabled={exporting}
+              title={t('exportTooltip')}
+              className="group bg-orange-600 hover:bg-orange-500 text-white px-8 py-3 rounded-2xl font-black text-lg transition-all shadow-xl active:scale-[0.98] flex items-center justify-center space-x-3 disabled:opacity-50 disabled:cursor-not-allowed uppercase"
+            >
+              {exporting ? (
+                <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 group-hover:translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              )}
+              <span>{exporting ? t('exportingBtn') : t('exportBtn')}</span>
+            </button>
           </div>
         </section>
 
@@ -344,21 +342,21 @@ const App: React.FC = () => {
 
                  <div className="pt-4">
                   <button 
-                    onClick={handleExport}
-                    disabled={exporting}
-                    className="w-full group bg-orange-600 hover:bg-orange-500 text-white py-5 rounded-2xl font-black text-lg transition-all shadow-xl active:scale-[0.98] flex items-center justify-center space-x-3 disabled:opacity-50 disabled:cursor-not-allowed uppercase"
+                    onClick={handleGenerateBackground}
+                    disabled={loading || !isUserLoaded}
+                    className="w-full group bg-white/10 hover:bg-orange-600 text-white py-5 rounded-2xl font-black text-lg transition-all shadow-xl active:scale-[0.98] flex items-center justify-center space-x-3 disabled:opacity-50 disabled:cursor-not-allowed uppercase border border-white/20 hover:border-orange-500"
                   >
-                    {exporting ? (
+                    {loading ? (
                       <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
                     ) : (
-                      <svg className="w-5 h-5 group-hover:translate-y-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      <svg className="w-5 h-5 group-hover:rotate-180 transition-transform duration-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
                     )}
-                    <span>{exporting ? t('exportingBtn') : t('exportBtn')}</span>
+                    <span>{loading ? t('generatingBtn') : t('generateBtn')}</span>
                   </button>
                  </div>
                </div>

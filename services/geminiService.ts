@@ -1,4 +1,6 @@
 
+import { GoogleGenAI } from "@google/genai";
+
 interface GenerateResponse {
   imageUrl: string | null;
   credits: number;
@@ -27,53 +29,112 @@ export const getUserProfile = async (email: string): Promise<UserProfile | null>
 
 export const generateNewPrompt = async (theme: string, email: string): Promise<{prompt: string | null, credits: number}> => {
   try {
-    const response = await fetch('/api/generate-prompt', {
+    // 1. Deduct credit via backend
+    const deductResponse = await fetch('/api/deduct-credit', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ theme, email }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, amount: 1 }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Backend prompt generation failed');
+    if (!deductResponse.ok) {
+      const errorData = await deductResponse.json();
+      throw new Error(errorData.message || 'Failed to deduct credit');
     }
 
-    const data = await response.json();
+    const { credits } = await deductResponse.json();
+
+    // 2. Call Gemini API
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("API Key not found");
+    const ai = new GoogleGenAI({ apiKey });
+    const promptInstruction = `You are an expert AI image prompt engineer. Generate a highly detailed, hyper-realistic image generation prompt for an outdoor clothing brand banner. 
+The theme is: ${theme}.
+CRITICAL REQUIREMENT: The prompt MUST specify that the main subject (a person wearing outdoor gear) is positioned on the extreme RIGHT third of the frame, leaving the left two-thirds completely empty/clear for text placement.
+The prompt should describe the lighting, atmosphere, and camera style (high-end retail photography).
+Do not include any conversational text, just the prompt itself.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: promptInstruction,
+    });
+
     return {
-      prompt: data.prompt,
-      credits: data.credits
+      prompt: response.text || null,
+      credits
     };
   } catch (error) {
-    console.error("Frontend error calling prompt proxy:", error);
+    console.error("Frontend error generating prompt:", error);
+    // Refund credit if Gemini fails
+    try {
+      await fetch('/api/refund-credit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, amount: 1 }),
+      });
+    } catch (e) {
+      console.error("Refund failed", e);
+    }
     return { prompt: null, credits: -1 }; 
   }
 };
 
 export const generateOutdoorBackground = async (prompt: string, email: string): Promise<GenerateResponse> => {
   try {
-    const response = await fetch('/api/generate-background', {
+    // 1. Deduct credit via backend
+    const deductResponse = await fetch('/api/deduct-credit', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ prompt, email }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, amount: 1 }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'Backend generation failed');
+    if (!deductResponse.ok) {
+      const errorData = await deductResponse.json();
+      throw new Error(errorData.message || 'Failed to deduct credit');
     }
 
-    const data = await response.json();
+    const { credits } = await deductResponse.json();
+
+    // 2. Call Gemini API
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("API Key not found");
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: { parts: [{ text: prompt }] },
+      config: { imageConfig: { aspectRatio: "16:9" } }
+    });
+
+    let imageUrl = null;
+    if (response.candidates && response.candidates[0] && response.candidates[0].content && response.candidates[0].content.parts) {
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                const base64EncodeString = part.inlineData.data;
+                imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${base64EncodeString}`;
+                break;
+            }
+        }
+    }
+
+    if (!imageUrl) {
+        throw new Error("No image generated");
+    }
+
     return {
-      imageUrl: data.imageUrl,
-      credits: data.credits
+      imageUrl,
+      credits
     };
   } catch (error) {
-    console.error("Frontend error calling background proxy:", error);
-    // Return empty result, handling error in UI
+    console.error("Frontend error generating background:", error);
+    // Refund credit if Gemini fails
+    try {
+      await fetch('/api/refund-credit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, amount: 1 }),
+      });
+    } catch (e) {
+      console.error("Refund failed", e);
+    }
     return { imageUrl: null, credits: -1 }; 
   }
 };
