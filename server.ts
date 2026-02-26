@@ -1,7 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import { handleGetUser, handleGenerateBackground, handleCreatePayPalOrder, handleCapturePayPalOrder } from "./server-proxy.ts";
+import { handleGetUser, handleGenerateBackground, handleGeneratePrompt, handleCreatePayPalOrder, handleCapturePayPalOrder } from "./server-proxy.ts";
 
 async function startServer() {
   const app = express();
@@ -13,6 +13,7 @@ async function startServer() {
   // API routes
   app.get("/api/user", handleGetUser);
   app.post("/api/generate-background", handleGenerateBackground);
+  app.post("/api/generate-prompt", handleGeneratePrompt);
   app.post("/api/paypal/create-order", handleCreatePayPalOrder);
   app.post("/api/paypal/capture-order", handleCapturePayPalOrder);
 

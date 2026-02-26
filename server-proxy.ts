@@ -195,7 +195,7 @@ export const handleGetUser = async (req: any, res: any) => {
 };
 
 // --- ENDPOINT: Generate Background ---
-export const handleGenerateBackground = async (req: any, res: any) => {
+export const handleGeneratePrompt = async (req: any, res: any) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
@@ -204,6 +204,59 @@ export const handleGenerateBackground = async (req: any, res: any) => {
 
   if (!theme || !email) {
     return res.status(400).json({ message: 'Theme and Email are required' });
+  }
+
+  const userRef = db.collection('users').doc(email);
+
+  try {
+    // 1. Transaction: Deduct Credit
+    await db.runTransaction(async (t: any) => {
+      const doc = await t.get(userRef);
+      if (!doc.exists) {
+        throw new Error("User not found");
+      }
+      const data = doc.data();
+      if (!data || data.credits < 1) {
+        throw new Error("Insufficient credits");
+      }
+      t.update(userRef, { credits: data.credits - 1 });
+    });
+
+    // 2. Initialize AI
+    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+    if (!apiKey) {
+        throw new Error("API Key not found");
+    }
+    const ai = new GoogleGenAI({ apiKey });
+
+    const promptInstruction = `You are an expert AI image prompt engineer. Generate a highly detailed, hyper-realistic image generation prompt for an outdoor clothing brand banner. 
+The theme is: ${theme}.
+CRITICAL REQUIREMENT: The prompt MUST specify that the main subject (a person wearing outdoor gear) is positioned on the extreme RIGHT third of the frame, leaving the left two-thirds completely empty/clear for text placement.
+The prompt should describe the lighting, atmosphere, and camera style (high-end retail photography).
+Do not include any conversational text, just the prompt itself.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: promptInstruction,
+    });
+
+    const doc = await userRef.get();
+    res.status(200).json({ prompt: response.text, credits: doc.data().credits });
+  } catch (error: any) {
+    console.error("Generate Prompt Error:", error);
+    res.status(500).json({ message: error.message || 'Internal Server Error' });
+  }
+};
+
+export const handleGenerateBackground = async (req: any, res: any) => {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Method Not Allowed' });
+  }
+
+  const { prompt, email } = req.body;
+
+  if (!prompt || !email) {
+    return res.status(400).json({ message: 'Prompt and Email are required' });
   }
 
   const userRef = db.collection('users').doc(email);
@@ -229,13 +282,6 @@ export const handleGenerateBackground = async (req: any, res: any) => {
         throw new Error("API Key not found");
     }
     const ai = new GoogleGenAI({ apiKey });
-    const prompt = `Hyper-realistic, high-fidelity professional photography of a man wearing a high-performance waterproof outdoor jacket walking on a scenic mountain trek trail. 
-      CRITICAL COMPOSITION: The man MUST be positioned on the extreme RIGHT third of the frame. 
-      The left two-thirds of the image MUST remain clear of any major subjects to allow for text placement.
-      Theme: ${theme}. 
-      Atmosphere: Bright natural daylight, cinematic lighting, sharp crisp details, vibrant colors. 
-      Style: High-end retail brand photography for an outdoor gear company. 
-      No text, no watermarks, no logos in the image. Masterpiece quality.`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',

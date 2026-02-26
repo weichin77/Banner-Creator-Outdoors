@@ -25,14 +25,40 @@ export const getUserProfile = async (email: string): Promise<UserProfile | null>
   }
 };
 
-export const generateOutdoorBackground = async (theme: string, email: string): Promise<GenerateResponse> => {
+export const generateNewPrompt = async (theme: string, email: string): Promise<{prompt: string | null, credits: number}> => {
+  try {
+    const response = await fetch('/api/generate-prompt', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ theme, email }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Backend prompt generation failed');
+    }
+
+    const data = await response.json();
+    return {
+      prompt: data.prompt,
+      credits: data.credits
+    };
+  } catch (error) {
+    console.error("Frontend error calling prompt proxy:", error);
+    return { prompt: null, credits: -1 }; 
+  }
+};
+
+export const generateOutdoorBackground = async (prompt: string, email: string): Promise<GenerateResponse> => {
   try {
     const response = await fetch('/api/generate-background', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ theme, email }),
+      body: JSON.stringify({ prompt, email }),
     });
 
     if (!response.ok) {

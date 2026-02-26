@@ -4,6 +4,7 @@ export interface BannerConfig {
   discount: string;
   discount2: string;
   theme: string;
+  prompt: string;
   backgroundImage: string | null;
   overlayOpacity: number;
   width: number;

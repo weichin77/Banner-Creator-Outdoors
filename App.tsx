@@ -4,12 +4,18 @@ import { toJpeg } from 'html-to-image';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { BannerConfig, UserAccount } from './types';
 import BannerPreview from './components/BannerPreview';
-import { generateOutdoorBackground, getUserProfile } from './services/geminiService';
+import { generateOutdoorBackground, getUserProfile, generateNewPrompt } from './services/geminiService';
 import { languages, translations } from './i18n';
+
+const defaultPrompts: Record<string, string> = {
+  nature: 'Hyper-realistic, high-fidelity professional photography of a man wearing a high-performance waterproof outdoor jacket walking on a scenic mountain trek trail. \nCRITICAL COMPOSITION: The man MUST be positioned on the extreme RIGHT third of the frame. \nThe left two-thirds of the image MUST remain clear of any major subjects to allow for text placement.\nTheme: nature.\nAtmosphere: Bright natural daylight, cinematic lighting, sharp crisp details, vibrant colors. \nStyle: High-end retail brand photography for an outdoor gear company. \nNo text, no watermarks, no logos in the image. Masterpiece quality.',
+  tactical: 'Hyper-realistic, high-fidelity professional photography of a person wearing tactical outdoor gear in a dense, misty forest. \nCRITICAL COMPOSITION: The person MUST be positioned on the extreme RIGHT third of the frame. \nThe left two-thirds of the image MUST remain clear of any major subjects to allow for text placement.\nTheme: tactical.\nAtmosphere: Moody, overcast, cinematic lighting, sharp crisp details, muted earthy colors. \nStyle: High-end retail brand photography for an outdoor gear company. \nNo text, no watermarks, no logos in the image. Masterpiece quality.',
+  urban: 'Hyper-realistic, high-fidelity professional photography of a person wearing stylish urban outdoor apparel standing on a high vantage point overlooking a modern city skyline at dusk. \nCRITICAL COMPOSITION: The person MUST be positioned on the extreme RIGHT third of the frame. \nThe left two-thirds of the image MUST remain clear of any major subjects to allow for text placement.\nTheme: urban.\nAtmosphere: Neon lights, twilight, cinematic lighting, sharp crisp details, vibrant city colors. \nStyle: High-end retail brand photography for an outdoor gear company. \nNo text, no watermarks, no logos in the image. Masterpiece quality.',
+  winter: 'Hyper-realistic, high-fidelity professional photography of a person wearing a heavy winter expedition parka standing on a snowy glacier peak. \nCRITICAL COMPOSITION: The person MUST be positioned on the extreme RIGHT third of the frame. \nThe left two-thirds of the image MUST remain clear of any major subjects to allow for text placement.\nTheme: winter.\nAtmosphere: Bright snow, clear blue sky, cinematic lighting, sharp crisp details, cool colors. \nStyle: High-end retail brand photography for an outdoor gear company. \nNo text, no watermarks, no logos in the image. Masterpiece quality.'
+};
 
 const App: React.FC = () => {
   const bannerRef = useRef<HTMLDivElement>(null);
-  const [customTheme, setCustomTheme] = useState('');
   
   // Initialize with a placeholder, but credits will be fetched from DB
   const [user, setUser] = useState<UserAccount>({
@@ -23,6 +29,7 @@ const App: React.FC = () => {
     discount: '秋冬外套88折',
     discount2: '全館新品登場',
     theme: 'nature',
+    prompt: 'Hyper-realistic, high-fidelity professional photography of a man wearing a high-performance waterproof outdoor jacket walking on a scenic mountain trek trail. \nCRITICAL COMPOSITION: The man MUST be positioned on the extreme RIGHT third of the frame. \nThe left two-thirds of the image MUST remain clear of any major subjects to allow for text placement.\nTheme: nature.\nAtmosphere: Bright natural daylight, cinematic lighting, sharp crisp details, vibrant colors. \nStyle: High-end retail brand photography for an outdoor gear company. \nNo text, no watermarks, no logos in the image. Masterpiece quality.',
     backgroundImage: 'https://images.unsplash.com/photo-1522163182402-834f871fd851?q=80&w=1644&auto=format&fit=crop', 
     overlayOpacity: 0.45,
     width: 1644,
@@ -36,6 +43,7 @@ const App: React.FC = () => {
   });
   
   const [loading, setLoading] = useState(false);
+  const [generatingPrompt, setGeneratingPrompt] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [showBilling, setShowBilling] = useState(false);
   const [isUserLoaded, setIsUserLoaded] = useState(false);
@@ -67,12 +75,9 @@ const App: React.FC = () => {
     }
 
     setLoading(true);
-    const themeToUse = customTheme.trim() 
-      ? `${config.theme} scenery, ${customTheme.trim()}` 
-      : config.theme;
       
     // Pass email to backend to ensure credits are deducted from correct account
-    const result = await generateOutdoorBackground(themeToUse, user.email);
+    const result = await generateOutdoorBackground(config.prompt, user.email);
     
     if (result.imageUrl) {
       setConfig(prev => ({ ...prev, backgroundImage: result.imageUrl }));
@@ -86,7 +91,32 @@ const App: React.FC = () => {
       if (profile) setUser(profile);
     }
     setLoading(false);
-  }, [config.theme, customTheme, user.credits, user.email]);
+  }, [config.prompt, user.credits, user.email]);
+
+  const handleNewPrompt = async () => {
+    if (user.credits <= 0) {
+      setShowBilling(true);
+      return;
+    }
+
+    if (!window.confirm(t('confirmPromptDeduction'))) {
+      return;
+    }
+
+    setGeneratingPrompt(true);
+    
+    const result = await generateNewPrompt(config.theme, user.email);
+    
+    if (result.prompt) {
+      setConfig(prev => ({ ...prev, prompt: result.prompt || '' }));
+      setUser(prev => ({ ...prev, credits: result.credits }));
+    } else if (result.credits === -1) {
+      const profile = await getUserProfile(user.email);
+      if (profile) setUser(profile);
+    }
+    
+    setGeneratingPrompt(false);
+  };
 
   const handleSubscribe = async () => {
     setLoading(true);
@@ -257,7 +287,14 @@ const App: React.FC = () => {
                     <label className="block text-[10px] font-black text-white/30 uppercase tracking-[0.2em] mb-3">{t('scenery')}</label>
                     <select 
                       value={config.theme}
-                      onChange={(e) => setConfig(prev => ({ ...prev, theme: e.target.value }))}
+                      onChange={(e) => {
+                        const newTheme = e.target.value;
+                        setConfig(prev => ({ 
+                          ...prev, 
+                          theme: newTheme,
+                          prompt: defaultPrompts[newTheme] || prev.prompt
+                        }));
+                      }}
                       className="w-full px-4 py-4 bg-black/40 border border-white/10 rounded-2xl focus:border-orange-500 outline-none font-bold text-white transition-all text-sm appearance-none"
                     >
                       <option value="nature">{t('mistyMountains')}</option>
@@ -281,70 +318,28 @@ const App: React.FC = () => {
 
             <div className="bg-[#1a1c23] p-6 sm:p-8 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden">
                <div className="absolute -top-24 -right-24 w-48 h-48 bg-blue-600/10 blur-[80px]"></div>
-               <h3 className="text-xs font-black mb-6 text-white/40 uppercase tracking-[0.3em]">{t('precisionControls')}</h3>
+               <div className="flex justify-between items-center mb-6">
+                 <h3 className="text-xs font-black text-white/40 uppercase tracking-[0.3em] m-0">{t('promptSection')}</h3>
+                 <button 
+                   onClick={handleNewPrompt}
+                   disabled={generatingPrompt || !isUserLoaded}
+                   className={`px-3 py-1.5 rounded-full text-[10px] font-bold tracking-wider uppercase transition-all border ${
+                     generatingPrompt || !isUserLoaded
+                     ? 'bg-white/5 text-white/30 border-white/5 cursor-not-allowed'
+                     : 'bg-orange-600/20 text-orange-400 border-orange-500/30 hover:bg-orange-600 hover:text-white hover:border-orange-500'
+                   }`}
+                 >
+                   {generatingPrompt ? t('generatingPromptBtn') : t('newPromptBtn')}
+                 </button>
+               </div>
                
                <div className="space-y-8">
                  <div className="space-y-4">
-                   <div className="flex justify-between">
-                     <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">{t('headingXY')}</label>
-                     <span className="text-[10px] font-mono text-orange-500">{config.titleX}%, {config.titleY}%</span>
-                   </div>
-                   <div className="grid grid-cols-2 gap-4">
-                     <input 
-                      type="range" min="0" max="100"
-                      value={config.titleX}
-                      onChange={(e) => setConfig(prev => ({ ...prev, titleX: parseInt(e.target.value) }))}
-                      className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-orange-600"
-                     />
-                     <input 
-                      type="range" min="0" max="100"
-                      value={config.titleY}
-                      onChange={(e) => setConfig(prev => ({ ...prev, titleY: parseInt(e.target.value) }))}
-                      className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-orange-600"
-                     />
-                   </div>
-                 </div>
-
-                 <div className="space-y-4 pt-6 border-t border-white/5">
-                   <div className="flex justify-between">
-                     <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">{t('promo1XY')}</label>
-                     <span className="text-[10px] font-mono text-orange-500">{config.discountX}%, {config.discountY}%</span>
-                   </div>
-                   <div className="grid grid-cols-2 gap-4">
-                     <input 
-                      type="range" min="0" max="100"
-                      value={config.discountX}
-                      onChange={(e) => setConfig(prev => ({ ...prev, discountX: parseInt(e.target.value) }))}
-                      className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-orange-600"
-                     />
-                     <input 
-                      type="range" min="0" max="100"
-                      value={config.discountY}
-                      onChange={(e) => setConfig(prev => ({ ...prev, discountY: parseInt(e.target.value) }))}
-                      className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-orange-600"
-                     />
-                   </div>
-                 </div>
-
-                 <div className="space-y-4 pt-6 border-t border-white/5">
-                   <div className="flex justify-between">
-                     <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">{t('promo2XY')}</label>
-                     <span className="text-[10px] font-mono text-orange-500">{config.discount2X}%, {config.discount2Y}%</span>
-                   </div>
-                   <div className="grid grid-cols-2 gap-4">
-                     <input 
-                      type="range" min="0" max="100"
-                      value={config.discount2X}
-                      onChange={(e) => setConfig(prev => ({ ...prev, discount2X: parseInt(e.target.value) }))}
-                      className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-orange-600"
-                     />
-                     <input 
-                      type="range" min="0" max="100"
-                      value={config.discount2Y}
-                      onChange={(e) => setConfig(prev => ({ ...prev, discount2Y: parseInt(e.target.value) }))}
-                      className="w-full h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-orange-600"
-                     />
-                   </div>
+                   <textarea
+                     value={config.prompt}
+                     onChange={(e) => setConfig(prev => ({ ...prev, prompt: e.target.value }))}
+                     className="w-full h-64 px-5 py-4 bg-black/40 border border-white/10 rounded-2xl focus:border-orange-500 outline-none font-bold text-white transition-all text-sm resize-none"
+                   />
                  </div>
 
                  <div className="pt-4">
