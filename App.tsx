@@ -47,13 +47,46 @@ const App: React.FC = () => {
   const [exporting, setExporting] = useState(false);
   const [showBilling, setShowBilling] = useState(false);
   const [isUserLoaded, setIsUserLoaded] = useState(false);
-  const [lang, setLang] = useState('en');
+  const [lang, setLang] = useState(() => {
+    const browserLang = navigator.language;
+    if (languages[browserLang as keyof typeof languages]) return browserLang;
+    const shortLang = browserLang.split('-')[0];
+    if (languages[shortLang as keyof typeof languages]) return shortLang;
+    if (browserLang.toLowerCase().startsWith('zh-tw') || browserLang.toLowerCase().startsWith('zh-hk')) return 'zh-TW';
+    if (browserLang.toLowerCase().startsWith('zh')) return 'zh-CN';
+    return 'en';
+  });
 
   const t = (key: string) => translations[lang]?.[key] || translations['en'][key] || key;
 
   // Load User Profile from Database on Mount
   useEffect(() => {
     const loadUser = async () => {
+      // Check for Stripe success/cancel
+      const urlParams = new URLSearchParams(window.location.search);
+      const stripeSuccess = urlParams.get('stripe_success');
+      const sessionId = urlParams.get('session_id');
+      
+      if (stripeSuccess === 'true' && sessionId) {
+        setLoading(true);
+        try {
+          const res = await fetch("/api/stripe/verify-session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId, email: user.email })
+          });
+          const data = await res.json();
+          if (data.success) {
+            // Clear URL params
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        } catch (err) {
+          console.error("Stripe verification error:", err);
+        } finally {
+          setLoading(false);
+        }
+      }
+
       // In a real app, 'user@example.com' would be retrieved from auth state (e.g., Firebase Auth)
       const profile = await getUserProfile(user.email);
       if (profile) {
@@ -153,6 +186,31 @@ const App: React.FC = () => {
       console.error('Export failed:', err);
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleStripeCheckout = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/stripe/create-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          email: user.email,
+          appUrl: window.location.origin
+        })
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error("No checkout URL returned");
+      }
+    } catch (err) {
+      console.error(err);
+      alert(t('stripeError'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -377,7 +435,23 @@ const App: React.FC = () => {
               <div className="text-white font-bold text-lg mb-4">{t('monthlyCredits')}</div>
             </div>
             
-            <div className="mb-4 relative z-10">
+            <div className="mb-4 relative z-10 space-y-4">
+              <button 
+                onClick={handleStripeCheckout}
+                disabled={loading}
+                className="w-full bg-[#635bff] hover:bg-[#5a51e7] text-white py-4 rounded-xl font-bold transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M13.945 10.134c0 .88-.702 1.282-1.802 1.282-.522 0-.962-.075-1.282-.18v2.385c.345.105.855.18 1.455.18 2.37 0 3.735-1.125 3.735-3.315 0-2.07-1.35-3.03-3.585-3.03-.6 0-1.11.075-1.605.195v6.525c.315.09.735.15 1.155.15 1.44 0 2.22-.645 2.22-1.74 0-.81-.54-1.2-1.56-1.2-.36 0-.645.045-.885.12v-1.05c.21-.06.51-.105.84-.105 1.05 0 1.305.45 1.305 1.275zM12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 22c-5.523 0-10-4.477-10-10S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+                </svg>
+                <span>{t('payWithStripe')}</span>
+              </button>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10"></div></div>
+                <div className="relative flex justify-center text-xs uppercase"><span className="bg-[#1a1c23] px-2 text-white/30">OR</span></div>
+              </div>
+
               <PayPalScriptProvider options={{ 
                 clientId: (import.meta as any).env.VITE_PAYPAL_CLIENT_ID || "test",
                 currency: "USD",

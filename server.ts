@@ -1,7 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import { handleGetUser, handleDeductCredit, handleRefundCredit, handleCreatePayPalOrder, handleCapturePayPalOrder } from "./server-proxy.ts";
+import { handleGetUser, handleDeductCredit, handleRefundCredit, handleCreatePayPalOrder, handleCapturePayPalOrder, handleCreateStripeSession, handleVerifyStripeSession } from "./server-proxy.ts";
 
 async function startServer() {
   const app = express();
@@ -16,6 +16,8 @@ async function startServer() {
   app.post("/api/refund-credit", handleRefundCredit);
   app.post("/api/paypal/create-order", handleCreatePayPalOrder);
   app.post("/api/paypal/capture-order", handleCapturePayPalOrder);
+  app.post("/api/stripe/create-session", handleCreateStripeSession);
+  app.post("/api/stripe/verify-session", handleVerifyStripeSession);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

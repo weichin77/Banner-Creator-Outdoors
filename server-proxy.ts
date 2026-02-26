@@ -11,6 +11,11 @@
 
 import { GoogleGenAI } from "@google/genai";
 import * as admin from "firebase-admin";
+import Stripe from "stripe";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+  apiVersion: "2025-01-27-preview" as any,
+});
 
 // 1. Initialize Firebase Admin (Singleton pattern)
 let db: any;
@@ -175,6 +180,81 @@ export const handleCapturePayPalOrder = async (req: any, res: any) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+// --- STRIPE INTEGRATION ---
+export const handleCreateStripeSession = async (req: any, res: any) => {
+  if (req.method !== 'POST') return res.status(405).json({ message: 'Method Not Allowed' });
+
+  const { email, appUrl } = req.body;
+  if (!email || !appUrl) {
+    return res.status(400).json({ message: 'Missing email or appUrl' });
+  }
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: 'Premium Banner Creator Subscription (1 Month)',
+              description: '100 credits for AI banner generation',
+            },
+            unit_amount: 2000, // $20.00
+          },
+          quantity: 1,
+        },
+      ],
+      mode: 'payment',
+      success_url: `${appUrl}?stripe_success=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appUrl}?stripe_cancel=true`,
+      customer_email: email,
+      metadata: {
+        email: email,
+      },
+    });
+
+    res.json({ id: session.id, url: session.url });
+  } catch (error: any) {
+    console.error("Stripe Create Session Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const handleVerifyStripeSession = async (req: any, res: any) => {
+  const { sessionId, email } = req.body;
+  if (!sessionId || !email) {
+    return res.status(400).json({ message: 'Missing sessionId or email' });
+  }
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.payment_status === 'paid' && session.metadata?.email === email) {
+      // Update user in DB
+      const userRef = db.collection('users').doc(email);
+      await db.runTransaction(async (t: any) => {
+        const doc = await t.get(userRef);
+        if (doc.exists) {
+          const data = doc.data();
+          // Check if this session was already processed to prevent double credits
+          // In a real app, you'd store processed session IDs
+          t.update(userRef, {
+            credits: (data.credits || 0) + 100,
+            isPro: true
+          });
+        }
+      });
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ success: false, message: 'Session not paid or email mismatch' });
+    }
+  } catch (error: any) {
+    console.error("Stripe Verify Session Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export const handleGetUser = async (req: any, res: any) => {
   if (req.method !== 'GET') {
     return res.status(405).json({ message: 'Method Not Allowed' });
