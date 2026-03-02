@@ -11,6 +11,7 @@ async function startServer() {
   app.use(express.json());
 
   // API routes
+  app.get("/api/health", (req, res) => res.json({ status: "ok" }));
   app.get("/api/user", handleGetUser);
   app.post("/api/deduct-credit", handleDeductCredit);
   app.post("/api/refund-credit", handleRefundCredit);
@@ -33,7 +34,15 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+  }).on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use`);
+    } else {
+      console.error('Server error:', err);
+    }
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error("Failed to start server:", err);
+});

@@ -13,9 +13,15 @@ import { GoogleGenAI } from "@google/genai";
 import * as admin from "firebase-admin";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2025-01-27-preview" as any,
-});
+let stripeClient: Stripe | null = null;
+const getStripe = () => {
+  if (!stripeClient) {
+    stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+      apiVersion: "2025-01-27-preview" as any,
+    });
+  }
+  return stripeClient;
+};
 
 // 1. Initialize Firebase Admin (Singleton pattern)
 let db: any;
@@ -191,6 +197,7 @@ export const handleCreateStripeSession = async (req: any, res: any) => {
   }
 
   try {
+    const stripe = getStripe();
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
@@ -229,6 +236,7 @@ export const handleVerifyStripeSession = async (req: any, res: any) => {
   }
 
   try {
+    const stripe = getStripe();
     const session = await stripe.checkout.sessions.retrieve(sessionId);
     if (session.payment_status === 'paid' && session.metadata?.email === email) {
       // Update user in DB
